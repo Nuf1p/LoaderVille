@@ -1,0 +1,4 @@
+LIBRARY "Loader"
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
