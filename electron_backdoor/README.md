@@ -101,19 +101,3 @@ archives carry the `.node` inside `app.asar` (Electron extracts it to
 ships it in `app.asar.unpacked`, which `deploy.sh` merges and `restore.sh`
 cleans up.
 
-## Limitations / notes
-
-- **App updates overwrite the patch.** Re-run `deploy.sh` after the target
-  updates; the glob picks the new version directory.
-- `stage.js` expects `package.json` `main: "bundle.js"`; other apps may name
-  their entrypoint differently (`patch.js` warns and patches anyway — adjust
-  the chain-to-original line in `payload/stage.js` for those).
-- Windows x64 only: `CONTEXT` size/offsets and `RtlCreateUserThread` usage are
-  AMD64-specific.
-- koffi's JS wrapper and native binary versions must match or
-  `tools/patch.js` aborts (koffi enforces this at load).
-- The shellcode blob is whatever you base64-encode into
-  `payload/shellcode.js`; the included one only launches `calc.exe`.
-- Not OPSEC: koffi is a well-known library, `%TEMP%` extraction is visible,
-  and the proof log is written unconditionally. This PoC targets feasibility,
-  not evasion.
