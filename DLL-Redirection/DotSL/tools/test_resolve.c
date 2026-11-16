@@ -1,5 +1,5 @@
 /*
- * bellatrix -- resolver self-test.
+ * bellatrix like -- resolver self-test.
  *
  * Runs on the host, not in the blob. Resolves kernel32 and two of its exports
  * through the PEB walker and compares each result against the loader's own
