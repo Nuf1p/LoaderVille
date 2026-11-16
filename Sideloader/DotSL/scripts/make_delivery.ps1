@@ -10,6 +10,8 @@
 .PARAMETER DriveLetter
 
 .PARAMETER AgeDays
+
+.PARAMETER Visible
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +24,8 @@ param(
     [ValidateSet('File', 'Folder')] [string]$LocalForm = 'File',
     [string]$DriveLetter = 'E',
     [int]   $SizeMB      = 32,
-    [int]   $AgeDays     = 120
+    [int]   $AgeDays     = 120,
+    [switch] $Visible
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,23 +153,29 @@ if ($LocalForm -eq 'Folder') {
 } else {
     $hidden += 'appraiser.dll', 'compattelrunner.exe.local'
 }
-foreach ($f in $hidden) {
-    [IO.File]::SetAttributes((Join-Path $root $f),
-        [IO.FileAttributes]::Hidden -bor
-        [IO.FileAttributes]::System -bor
-        [IO.FileAttributes]::Archive)
-    Write-Host "  [attr] Hidden+System on $f"
+if ($Visible) {
+    Write-Host "  [test] files left visible (screenshot build)"
+} else {
+    foreach ($f in $hidden) {
+        [IO.File]::SetAttributes((Join-Path $root $f),
+            [IO.FileAttributes]::Hidden -bor
+            [IO.FileAttributes]::System -bor
+            [IO.FileAttributes]::Archive)
+        Write-Host "  [attr] Hidden+System on $f"
+    }
 }
 
 # ---- age the files -------------------------------------------------
 # Sideload rules fire on files touched inside a short recency window;
 # the volume is packaged ahead of delivery, so the ages carry across.
 $old = (Get-Date).AddDays(-$AgeDays)
-foreach ($f in $hidden) {
-    $p = Join-Path $root $f
-    [IO.File]::SetLastWriteTime($p, $old)
-    [IO.File]::SetCreationTime($p, $old)
-    Write-Host ("  [time] {0} set to {1:yyyy-MM-dd}" -f $f, $old)
+if (-not $Visible) {
+    foreach ($f in $hidden) {
+        $p = Join-Path $root $f
+        [IO.File]::SetLastWriteTime($p, $old)
+        [IO.File]::SetCreationTime($p, $old)
+        Write-Host ("  [time] {0} set to {1:yyyy-MM-dd}" -f $f, $old)
+    }
 }
 
 # ---- the lure ------------------------------------------------------
