@@ -30,6 +30,18 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Static check: the supplied host must keep the restricted-search policy
+# (LOAD_LIBRARY_SEARCH_SYSTEM32 immediates) -- that is what makes the marker
+# required. The invocation contract itself is covered by the smoke run.
+function Test-Host([string]$path) {
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $blob  = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
+    $sig   = [string]([char]0x41) + [char]0xB8 + [char]0x00 + [char]0x08 +
+             [char]0x00 + [char]0x00
+    if ($blob.Contains($sig)) { return @() }
+    return @('no 0x800 (LOAD_LIBRARY_SEARCH_SYSTEM32) immediates')
+}
+
 function Resolve-FromScript([string]$p) {
     if ([IO.Path]::IsPathRooted($p)) { return $p }
     return [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $p))
@@ -70,7 +82,10 @@ if (-not $HostExe) {
     $HostExe = Join-Path $env:SystemRoot 'System32\compattelrunner.exe'
 }
 if (-not (Test-Path $HostExe)) { throw "host not found: $HostExe" }
+$problems = Test-Host $HostExe
+if ($problems) { throw "host verification failed: $($problems -join '; ')" }
 Write-Host "host   : $HostExe"
+Write-Host "  [check] host verified (restricted-search policy present)"
 Write-Host "carrier: $DllPath"
 Write-Host "form   : $LocalForm"
 

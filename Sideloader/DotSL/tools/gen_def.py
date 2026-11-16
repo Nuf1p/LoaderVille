@@ -4,7 +4,7 @@
     gen_def.py <real.dll> <library-name> > appraiser.def
 
 The build gate diffs the generated surface against the real module, so this
-is the single source of truth rather than a hand-maintained list.
+is the single source rather than a hand-maintained list.
 """
 import re
 import subprocess
