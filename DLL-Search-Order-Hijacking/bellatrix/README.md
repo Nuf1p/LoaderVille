@@ -1,5 +1,8 @@
 # ngentask / mscorsvc — CWD phantom DLL hijacking
 
+Type: DLL search-order hijacking (ATT&CK T1574.001, hijack type: phantom) — the
+dependency is missing from every DLL search path and resolves from the CWD.
+
 A Windows initial-access loader. A signed Microsoft host stays in its system
 path and is never moved; the hijacked dependency is supplied from the working
 directory. Nothing executable is dropped in the package.
