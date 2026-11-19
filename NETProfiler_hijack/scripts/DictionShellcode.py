@@ -5,7 +5,7 @@ import re
 import os
 
 # Get English wordlist
-with open('static/english-words.txt') as f:
+with open('scripts/english-words.txt') as f:
     english_words = [line.rstrip('\n') for line in f]
 
 # Create unique list of 256 dictionary words
