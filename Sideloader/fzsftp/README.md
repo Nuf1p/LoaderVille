@@ -2,108 +2,99 @@
 
 ## Overview
 
-This project implements a reflective DLL loader that embeds an encrypted implant shellcode inside a legitimate-looking PE file.  
-The resulting artifact is designed to be used in a DLL sideloading scenario to achieve stealthy execution of the implant.
+This project implements a DLL loader that embeds an encrypted implant shellcode
+inside a legitimate-looking PE file. The resulting artifact is used in a DLL
+sideloading scenario (`fzsftp.exe`) to execute the implant.
 
-At runtime, the loader decrypts the embedded payload, maps it into memory, and transfers execution to the implant’s entry point without writing additional payloads to disk.
+At runtime the loader decrypts the embedded payload, maps it into memory, and
+transfers execution to the implant's entry point without writing additional
+payloads to disk.
 
 ---
 
-## Build Process
+## How it works
 
-### Requirements
+- `fzsftp.exe` imports `libnettle-8.dll` (the nettle crypto library).
+- We replace `libnettle-8.dll` with our loader. To keep FileZilla working, the
+  loader **forwards** the 12 `nettle_gcm_*` exports to the real nettle, renamed
+  `libneltte-8.dll`, sitting next to it (forwarders are emitted via `.drectve`
+  linker directives in `SideeLoader.c`).
+- On `DLL_PROCESS_ATTACH`, `DllMain` spawns `LoadSc` via `RtlCreateUserThread`
+  (outside the loader lock). `LoadSc` locates its own mapped image, copies the
+  `.nazgul` section, XOR-decrypts it with a repeating 8-byte key, and runs it.
+
+```text
+fzsftp.exe ──imports──> libnettle-8.dll (loader + .nazgul)
+                         └─forwards nettle_gcm_* ──> libneltte-8.dll (real nettle)
+                         └─DllMain → RtlCreateUserThread → LoadSc
+                              └─read .nazgul → XOR-decrypt → execute agent
+```
+
+---
+
+## Requirements
 
 - GNU Make
-- Python 3.x
-- mingw-w64 toolchain (for Windows cross-compilation, if applicable)
+- Python 3
+- MinGW-w64 (`x86_64-w64-mingw32-gcc`, `x86_64-w64-mingw32-windres`)
 
 ---
 
-### Step 1: Compile the Loader
+## Build pipeline
 
-Compile the loader using `make`.  
-This produces a DLL named `loader.dll`.
+### Step 1 — Build the loader
 
 ```bash
 make
 ```
 
----
+Runs `windres` on `resource.rc` (FileZilla version info) and compiles/links
+`SideeLoader.c` into `loader.dll`. The DLL exports the 12 `nettle_gcm_*` symbols
+as forwarders to `libneltte-8.*`.
 
-### Step 2: Encrypt and Embed the Implant
+Output: `loader.dll`
 
-Use the `encrypt_and_embed.py` script to encrypt the implant shellcode and embed it into a newly created section of the loader PE.
-
-#### Example
+### Step 2 — Encrypt and embed the implant
 
 ```bash
-python3 encrypt_and_embed.py \
+python3 script/encrypt.py \
     --pe loader.dll \
-    --sc shellcode.bin \
+    --sc agent.x64.bin \
     --output libnettle-8.dll
 ```
 
-#### Parameters
+Arguments:
 
-- `--pe`  
-  Input PE file containing the loader (`loader.dll`)
+- `--pe` — input PE (`loader.dll`)
+- `--sc` — raw x64 shellcode blob (`shellcode.bin`)
+- `--output` — output PE; **must be `libnettle-8.dll`** to match both the name
+  `fzsftp.exe` imports and the name `LoadSc` looks up at runtime.
 
-- `--sc`  
-  Implant Shellcode to be encrypted and embedded
-
-- `--output`  
-  Output PE file containing the encrypted implant  
-  **The filename must match the DLL name expected by the sideloading target**
+Output: `libnettle-8.dll`
 
 ---
 
 ## Deployment
 
-### Step 3: Stage the Files
-
-Copy the generated DLL into the execution directory (for example, `bin/`):
+### Step 3 — Stage the files
 
 ```bash
 cp libnettle-8.dll bin/
 ```
 
-Ensure the following files are present in the same directory:
+Final `bin/` layout — all three in one directory:
 
-- `fzsftp.exe`  
-  Legitimate executable used as the sideloading target
+| File | Role |
+|---|---|
+| `fzsftp.exe` | Legitimate sideloading target; imports `libnettle-8.dll` |
+| `libnettle-8.dll` | Our loader + embedded agent (built in Step 2) |
+| `libneltte-8.dll` | Real nettle crypto library (renamed); backs the forwarded `nettle_gcm_*` exports |
 
-- `libneltte-8.dll`  
-  Legitimate dependency expected by `fzsftp.exe`
-
-- `libnettle-8.dll`  
-  Malicious loader with the encrypted implant embedded
-
----
-
-### Step 4: Trigger Sideloading
-
-Execute the target binary:
+### Step 4 — Trigger sideloading
 
 ```bash
 fzsftp.exe
 ```
 
-Due to Windows DLL search order resolution, `libnettle-8.dll` is loaded automatically, triggering the loader and executing the embedded implant.
-
----
-
-## Loader Execution Flow
-
-Before executing the implant, the loader performs the following actions:
-
-1. **Direct Implant Execution**  
-   `DllMain` resolves `RtlCreateUserThread` and spawns `LoadSc` on its own thread at process attach, so the payload runs outside the loader lock: it decrypts the embedded shellcode into memory and invokes the implant’s entry point.
-
----
-
-## Notes
-
-- The output DLL name must exactly match the name expected by the sideloading target binary.
-- The implant is decrypted and executed entirely in memory.
-- No additional payloads are written to disk after initial load.
-- Intended for controlled red team operations with appropriate OPSEC and authorization.
+Windows DLL search order loads `libnettle-8.dll` from the working directory,
+which decrypts and executes the embedded implant.
