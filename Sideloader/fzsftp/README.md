@@ -57,7 +57,7 @@ Output: `loader.dll`
 ### Step 2 — Encrypt and embed the implant
 
 ```bash
-python3 script/encrypt_and_embed.py.py \
+python3 script/encrypt_and_embed.py \
     --pe loader.dll \
     --sc agent.x64.bin \
     --output libnettle-8.dll
